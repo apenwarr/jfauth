@@ -1,0 +1,244 @@
+
+jfauth: Just Fast Authentication
+================================
+
+jfauth exists to solve a problem that has been driving me crazy for more
+than a decade: password synchronization across multiple Unix machines.
+
+It ought to be easy, right?  The passwords are stored in /etc/shadow, a
+plain text file, and all I *really* need is to get a copy of those passwords
+onto every machine I'm interested in.
+
+But that plan creates several problems:
+
+- You don't *really* want to distribute your /etc/shadow file very far;
+  anyone with a copy suddenly has the ability to brute-force crack your
+  password file, and most passwords don't last long against such an attack.
+
+- /etc/shadow is readable/writable only by root, so to copy it around would
+  require root access on *both* the master server and the server receiving the
+  copy.  That might be okay if one person is managing *every* machine on the
+  whole network, but it's not much good if you let developers set up their own
+  workstations.
+  
+- You might not want *every* user to have access to *every* machine, so
+  you probably can't just copy the file; you need to filter it somehow.
+  
+- You might want to keep a separate list of "network users" and "local
+  users."  For example, you could have a global root password (the 'network
+  admin' should have access to everything), plus a separate root password so
+  individuals can administer particular machines.
+
+Copying the files around gets messy.  jfauthd is the next best thing.
+
+
+How it works
+------------
+
+When you log in, your system typically uses PAM to validate your username
+and password.  (If you log in using SSH keys, jfauth doesn't help you; copy
+your .ssh/authorized_keys file around instead.) jfauth comes with a simple
+PAM module (pam_jfauth) that just connects to /var/run/jfauthd/sock and asks
+if that password is correct.  Notably, you don't have to be root in order to
+check a password.  This should be good news for people who want to use PAM
+from apache or another web server.
+
+On the other end of the /var/run/jfauthd/sock socket is jfauthd, the
+authentication daemon.  jfauthd runs in one of two modes:
+
+ 1. Forward all requests back to PAM, which can be set up to authenticate
+    against /etc/shadow, Active Directory, LDAP, NIS, etc.
+    
+ 2. Forward all requests over SSL to a remote jfauthd server.
+
+Generally, you'll set up one copy of jfauthd as the network master, and that
+one will run in mode 1.  This lets other machines connect up to it and
+authenticate against *that* machine's PAM.  So you only need one copy of
+/etc/shadow, for example.
+
+The other machines will be configured in mode 2, connecting to the master
+server.  Because pam_jfauth is "stackable," you can, if you want, set those
+machines up to fall back to any other method (such as pam_unix to read the
+local /etc/shadow file) if it fails.
+
+
+Bonus Features
+--------------
+
+If you start jfauthd with the --smbpasswd option, it'll auto-run the
+smbpasswd command to update Samba whenever you successfully authenticate. 
+That means you can ssh (or POP, or IMAP, or whatever) into your machine
+once, let it authenticate with jfauthd, and then you'll be able to connect
+up using Samba.  Sure, it's not as cool as actually having smbpasswd be
+right in the first place, but that's a lot harder to fix.
+
+jfauthd *does* keep its authentication connection open persistently.  That
+means that even though it uses SSL, it doesn't have to re-negotiate SSL
+each time someone logs in, so it can be both secure *and* fast.  It also
+minimizes network bandwidth usage and latency, so logins are fast even over
+a VPN.
+
+A simple command-line tool, jfauth, takes a username or password on stdin
+and exits with either a 0 (success) or 1 (failure).  You can use this in
+shell scripts, etc, to authenticate whatever service you want using the
+jfauthd stack.
+
+jfauth includes no setuid programs.  The jfauthd program may need to run as
+root, however, depending on your PAM setup.  Depending on your point of
+view, that's either better or worse.
+
+
+Caching
+-------
+
+jfauthd currently doesn't cache successful authentications.  The plan is to
+add that, so things like LDAP authentication (which can be sloooooooow,
+especially with SSL and over a VPN) can be vastly quicker.
+
+The plan is to cache only successful authentications, and have two different
+timeouts:
+
+ - if we're still connected to the remote server, time out the cache after
+   short_timeout seconds.  Before that time, don't even bother re-requesting
+   authentication from the server, thus reducing its load and making things
+   go super fast.  short_timeout is probably about 5 to 30 seconds.
+
+ - if we can't connect to the remote server, cache successful
+   authentications for up to long_timeout seconds.  I think this should
+   default to infinity; that's what Windows XP does when you can't connect
+   to a domain, and it's very convenient.  It means your computer won't
+   become unusable (at least for the people who have used it lately) just
+   because your auth server goes down for a while.
+
+Note that this caching doesn't get in the way of people who have changed
+their passwords: if you enter a password that *doesn't* match the on the in
+the cache, we'll forward the request on to the remote server where it can be
+checked.  We update the cache only if the remote server says authentication
+was successful.
+
+Also note that "remote server" in this case could equally well be PAM.  Some
+PAM modules are *really* slow, which is completely inappropriate in some
+sitautions, such as apache_mod_pam, which re-authenticates for *every single
+web page you request*.  If your PAM is set up to talk to LDAP, this puts a
+huge load on your LDAP server and makes your web server incredibly slow. 
+With jfauthd caching, apache_mod_pam can authenticate against whatever you
+want, and it'll still be fast.
+
+
+Installation (master server)
+----------------------------
+
+If you're using Debian, install the correct .deb package for your
+distribution.  Otherwise, 'make install' in the jfauth source code
+directory.
+
+Start the jfauthd server on your "master" server with a command line like
+this:
+
+	jfauthd -d -s -u --smbpasswd
+	
+(Try jfauthd --help to find out what the options do.)
+
+On Debian, jfauthd probably started automatically.  To change the options
+it's using, edit /etc/default/jfauth, save your changes, and then run
+
+	/etc/init.d/jfauthd restart
+
+Now take a look at /etc/pam.d/jfauthd.  It probably looks something like
+this:
+
+	@include common-account
+	@include common-password
+	@include common-session
+
+	auth	required	pam_unix.so nullok_secure
+
+That means when jfauthd authenticates someone, it's going to use pam_unix. 
+If you wanted it to try pam_ldap and then fall back to pam_unix, you would
+delete the last line and add this instead:
+
+	auth required pam_ldap.so debug
+	auth required pam_unix.so use_first_pass
+
+All this is normal PAM stuff; just about any PAM module should work here. 
+If you just want to authenticate against /etc/shadow, just leave the file
+alone and you should be okay.
+
+Now, from the command line, test out your jfauthd connection to make sure it
+works.  Don't type the $, that just means the command prompt:
+
+	$ jfauth && echo YAY || echo FAIL
+	myusername
+	mypassword
+
+(You have to type your own username and password instead of "myusername" and
+"mypassword".)  If it works, you'll see YAY.  If it doesn't work, you'll see
+FAIL.  If it fails, STOP NOW AND DON'T GO ON TO THE NEXT STEP.  YOU MIGHT
+BREAK YOUR SYSTEM OTHERWISE.
+
+Now you can configure PAM for all the programs *other* than jfauthd, to make
+them talk to jfauthd.  A sample PAM setup is in
+/usr/share/doc/jfauthd/example/common-auth.  On a Debian system, you can
+just replace /etc/pam.d/common-auth with that and it'll work; on non-Debian
+systems, you probably need to fiddle with it a bit more.  The key part of
+the file is this:
+
+	auth	required	pam_jfauth.so
+	
+or, if you want to use other modules as a fallback, this:
+
+	auth	sufficient	pam_jfauth.so
+
+There are no PAM options to provide to the pam_jfauth.so module; it just
+works.
+
+Now that PAM is set up, try using 'su' or 'ssh' or one of your other
+programs that tries to authenticate; if all goes well, it'll work.
+
+
+Installation (non-master server)
+--------------------------------
+
+Some people like to call these "slave" machines, but that's kind of cruel. 
+They're not really slaves; they're just borrowing some authentication help
+from the master.  So let's call them non-master servers.
+
+On a non-master server, you need to run jfauthd with slightly different
+options:
+
+	jfauthd -d -u -f MASTER_SERVER_HOSTNAME
+	
+Where you replace MASTER_SERVER_HOSTNAME with the hostname (or IP address,
+if you're paranoid) of the master server you configured above.
+
+As before, in Debian, you can just edit /etc/default/jfauth and then run
+
+	/etc/init.d/jfauth restart
+
+and your daemon will be running.
+
+On a non-master server, you can ignore /etc/pam.d/jfauthd, because it never
+gets used; jfauthd doesn't use PAM, it just forwards all its requests to the
+master server, which uses PAM (and its own /etc/pam.d/jfauthd).
+
+You can now test your jfauth setup using the 'jfauth' command, just like in
+the previous section.
+
+Next, set up PAM to talk to jfauthd, just like in the previous section
+(probably by changing /etc/pam.d/common-auth again).
+
+Easy, right?  The only real difference is the jfauthd configuration; the
+pam_jfauth setup is the same on every machine where you want to use it.
+
+
+Frequently Asked Questions
+--------------------------
+
+This program is far too new to have any frequently asked questions.  If you
+have a question, though, please feel free to email me.  Your question will,
+by definition, become the most frequently asked, and probably land itself in
+this document and you'll be famous.  You want to be famous, right?  Right.
+
+--
+Avery Pennarun
+apenwarr@gmail.com

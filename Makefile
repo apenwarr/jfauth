@@ -23,7 +23,7 @@ install: all
 	install -m 0755 -t ${DESTDIR}/usr/bin jfauth
 	install -m 0644 -t ${DESTDIR}/lib/security pam_jfauth.so
 	install -m 0644 -T pam.d-jfauthd ${DESTDIR}/etc/pam.d/jfauthd
-	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING
+	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING README
 	install -m 0644 -T example.common-auth \
 		${DESTDIR}/usr/share/doc/jfauth/examples/common-auth
 
