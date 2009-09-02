@@ -6,7 +6,7 @@
 #include "wvstreamclone.h"
 #include "wvfileutils.h"
 #include "wvsslstream.h"
-#include "wvx509mgr.h"
+#include "wvx509.h"
 #include "wvstrutils.h"
 #include "wvpipe.h"
 #include "wvscatterhash.h"
