@@ -17,13 +17,15 @@ install: all
 		${DESTDIR}/usr/sbin \
 		${DESTDIR}/usr/bin \
 		${DESTDIR}/lib/security \
-		${DESTDIR}/usr/share/doc/jfauth \
-		${DESTDIR}/etc/pam.d
+		${DESTDIR}/etc/pam.d \
+		${DESTDIR}/usr/share/doc/jfauth/examples
 	install -m 0755 -t ${DESTDIR}/usr/sbin jfauthd
 	install -m 0755 -t ${DESTDIR}/usr/bin jfauth
 	install -m 0644 -t ${DESTDIR}/lib/security pam_jfauth.so
-	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING
 	install -m 0644 -T pam.d-jfauthd ${DESTDIR}/etc/pam.d/jfauthd
+	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING
+	install -m 0644 -T example.common-auth \
+		${DESTDIR}/usr/share/doc/jfauth/examples/common-auth
 
 jfauthd: LIBS+=-lwvstreams -lpam
 jfauthd: jfauthd.o authpam.o jfversion.o

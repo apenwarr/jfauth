@@ -31,9 +31,9 @@ pam auth server:
 .	auto-update smbpasswd on successful auth?
 
 sysadmin
-	sample init.d script
-		use ulimits
-	debian package scripts
+.	sample init.d script
+	use ulimits
+.	debian package scripts
 	compile correctly with wvstreams 4.2 (Debian etch)
 		-fno-rtti
 		nonexistent wvx509mgr.h
