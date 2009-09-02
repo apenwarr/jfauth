@@ -18,18 +18,30 @@ pam auth server:
 	proxy to remote auth server over ssl
 	persistent key on server side
 	client should check that server key matches previous
+	delay after unsuccessful auth
+		remote: after *every* auth
+		local: after unsuccessful auth
+	don't leak error codes back to the client
 	local caching
 		non-persistent, non-expiring
 		non-persistent, expiring
 		persistent, expiring
 		persistent, expiring with fallback
 	do something sensible if people make too many incoming connections
-	auto-update smbpasswd on successful auth?
+.	auto-update smbpasswd on successful auth?
 
 sysadmin
 	sample init.d script
 		use ulimits
 	debian package scripts
+	compile correctly with wvstreams 4.2 (Debian etch)
+		-fno-rtti
+		nonexistent wvx509mgr.h
+		
+.command line checker
+.	first line: username
+.	second line: password
+.	auth via unix socket
 
 pam_jfauthd:
 	connect to unix socket

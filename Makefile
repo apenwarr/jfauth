@@ -5,10 +5,12 @@ CPPFLAGS=-g -I/usr/include/xplc-0.3.13 -I/usr/include/wvstreams -Wall \
 
 default: all
 
-all: jfauthd
+all: jfauthd jfauth
 
 jfauthd: LIBS+=-lwvstreams -lpam
 jfauthd: jfauthd.o authpam.o
+
+jfauth: jfauth.o
 
 # Cheap and easy: all the .o files depend on all the .h files.
 $(patsubst %.cc,%.o,$(wildcard *.cc)) $(patsubst %.c,%.o,$(wildcard *.c)): \
@@ -24,4 +26,4 @@ $(patsubst %.cc,%.o,$(wildcard *.cc)) $(patsubst %.c,%.o,$(wildcard *.c)): \
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)
 	
 clean::
-	rm -f *~ *.o jfauthd
+	rm -f *~ *.o jfauthd jfauth
