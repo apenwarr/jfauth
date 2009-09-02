@@ -1,0 +1,21 @@
+Source: jfauth
+Section: net
+Priority: extra
+Maintainer: Avery Pennarun <apenwarr@gmail.com>
+Build-Depends: debhelper (>= 5), libpam0g-dev, libwvstreams-dev
+Standards-Version: 3.8.0
+Homepage: http://github.com/apenwarr/jfauth
+
+Package: jfauth
+Architecture: any
+Depends: ${shlibs:Depends}
+Description: Just Fast Authentication daemon, proxy, PAM module, and tools
+ jfauth consists of a daemon and various clients (including a PAM module)
+ that make it easy to set up secure authentication on the local machine or
+ to act as an authentication server (via SSL) for remote machines.
+ .
+ The package includes jfauthd, a caching authentication server that can
+ proxy requests to a remote jfauthd or to the local PAM subsystem; jfauth,
+ a standalone program for checking a username and password against jfauthd;
+ and pam_jfauth, a PAM module that contacts jfauthd so that any local
+ service can authenticate against any system jfauthd supports.

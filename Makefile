@@ -12,6 +12,19 @@ default: all
 
 all: jfauthd jfauth pam_jfauth.so pamtest
 
+install: all
+	install -d \
+		${DESTDIR}/usr/sbin \
+		${DESTDIR}/usr/bin \
+		${DESTDIR}/lib/security \
+		${DESTDIR}/usr/share/doc/jfauth \
+		${DESTDIR}/etc/init.d/jfauthd
+	install -m 0755 -t ${DESTDIR}/usr/sbin jfauthd
+	install -m 0755 -t ${DESTDIR}/usr/bin jfauth
+	install -m 0644 -t ${DESTDIR}/lib/security pam_jfauth.so
+	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING
+	install -m 0755 init.d-jfauthd ${DESTDIR}/etc/init.d/jfauthd
+
 jfauthd: LIBS+=-lwvstreams -lpam
 jfauthd: jfauthd.o authpam.o jfversion.o
 
