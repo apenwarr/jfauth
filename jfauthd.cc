@@ -17,7 +17,7 @@ static void auth_succeeded(WvStringParm user, WvStringParm pass)
 {
     if (!!user && !!pass)
     {
-	const char *argv[] = { "smbpasswd", "-s", user, NULL };
+	const char *argv[] = { "smbpasswd", "-a", "-s", user, NULL };
 	WvPipe p("smbpasswd", argv, true, false, false);
 	p.print("%s\n%s\n", pass, pass);
 	p.nowrite();
