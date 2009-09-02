@@ -1,1 +1,5 @@
-DAEMON_ARGS="-s -u -d --smbpasswd"
+# Things you might want to add:
+#   -u   enable unix socket (allows pam_jfauth to work)
+#   -s   enable SSL server (allows remote jfauthd proxies to connect)
+#   --smbpasswd  auto-update smbpasswd whenever someone logs in
+DAEMON_ARGS="-d -u"
