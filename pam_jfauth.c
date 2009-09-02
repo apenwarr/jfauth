@@ -28,11 +28,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags,
     if (ret != PAM_SUCCESS)
 	return PAM_AUTH_ERR;
     
-    struct pam_message m[] = {
-	{ PAM_PROMPT_ECHO_OFF, "Password:" },
-    };
-    struct pam_response *resp;
-    ret = c->conv(1, (const struct pam_message **)&m, &resp, c->appdata_ptr);
+    struct pam_message m1 = { PAM_PROMPT_ECHO_OFF, "Password: " };
+    const struct pam_message *m = &m1;
+    struct pam_response *resp = NULL;
+    ret = c->conv(1, &m, &resp, c->appdata_ptr);
     if (ret != PAM_SUCCESS)
 	return ret;
     pass = resp[0].resp;
