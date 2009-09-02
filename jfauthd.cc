@@ -12,6 +12,99 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+class AuthBase;
+AuthBase *globalauth;
+
+
+class AuthBase
+{
+public:
+    virtual WvError check(WvStringParm rhost,
+			  WvStringParm user, WvStringParm pass) = 0;
+    
+    virtual ~AuthBase() {}
+};
+
+
+class PamAuth : public AuthBase
+{
+public:
+    virtual WvError check(WvStringParm rhost,
+			  WvStringParm user, WvStringParm pass) 
+    {
+	return jfauth_pam("jfauthd", rhost, user, pass);
+    }
+};
+
+
+class ForwardAuth : public AuthBase
+{
+    WvString hostport;
+    WvStream *s;
+    
+    void unconnect()
+    {
+	if (s)
+	{
+	    WvIStreamList::globallist.unlink(s);
+	    WVRELEASE(s);
+	    s = NULL;
+	}
+    }
+    
+    void reconnect()
+    {
+	unconnect();
+	
+	WvStream *_s;
+	if (!!hostport && strchr(hostport, ':'))
+	    _s = new WvTCPConn(hostport);
+	else
+	    _s = new WvTCPConn(hostport, 5479);
+	s = new WvSSLStream(_s);
+	WvIStreamList::globallist.append(s, false, (char *)"forwardauth");
+    }
+    
+public:
+    ForwardAuth(WvStringParm _hostport) 
+	: hostport(_hostport)
+    {
+	s = NULL;
+	reconnect();
+    }
+    
+    ~ForwardAuth()
+    {
+	unconnect();
+    }
+    
+    virtual WvError check(WvStringParm rhost,
+			  WvStringParm user, WvStringParm pass) 
+    {
+	if (!s->isok())
+	    reconnect();
+	
+	s->print("1\r\n%s\r\n%s\r\n", user, pass);
+	s->write("\0", 1);
+	s->runonce(0);
+	WvString r1 = trim_string(s->getline(5000));
+	WvString r2 = trim_string(s->getline(500));
+	
+	WvError e;
+	if (s->geterr())
+	    e.set_both(s->geterr(), s->errstr());
+	else if (!s->isok())
+	    e.set("Remote auth server disconnected");
+	else if (r1.num())
+	    e.set_both(r1.num(), r2);
+	else if (r1 != "0")
+	    e.set("Remote auth server: syntax error in response");
+	// otherwise: succeeded
+	 
+	return e;
+    }
+};
+
 
 static void auth_succeeded(WvStringParm user, WvStringParm pass)
 {
@@ -74,7 +167,10 @@ public:
 		printf("ver:%d user:'%s' pass:'%s' (src='%s')\n",
 		       ver, user.cstr(), pass.cstr(),
 		       WvString(*src()).cstr());
-		WvError e = jfauth_pam("jfauthd", *src(), user, pass);
+		
+		assert(globalauth);
+		WvError e = globalauth->check(*src(), user, pass);
+		
 		if (e.isok())
 		{
 		    log(WvLog::Info,
@@ -129,8 +225,17 @@ static void unix_incoming(WvStream &, void *userdata)
 }
 
 
+WvString forwardhost;
+
 static void startup(WvStreamsDaemon &daemon, void *)
 {
+    if (globalauth)
+	delete globalauth;
+    if (forwardhost)
+	globalauth = new ForwardAuth(forwardhost);
+    else
+	globalauth = new PamAuth();
+    
     WvTCPListener *tcp = new WvTCPListener(5478);
     tcp->setcallback(tcp_incoming, tcp);
     daemon.add_die_stream(tcp, true, (char *)"tcplistener");
@@ -150,5 +255,10 @@ static void startup(WvStreamsDaemon &daemon, void *)
 int main(int argc, char **argv)
 {
     WvStreamsDaemon daemon("jfauthd", "0.1", startup);
+    
+    daemon.args.add_option
+	('f', "forward", "Forward all requests to a remote jfauthd",
+	 "HOST:PORT", forwardhost);
+    
     return daemon.run(argc, argv);
 }
