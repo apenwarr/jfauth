@@ -6,3 +6,4 @@ jfauthd
 pamtest
 .version*
 version.tmp.h
+build-stamp

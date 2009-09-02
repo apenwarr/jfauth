@@ -12,9 +12,9 @@
 
 # PATH should only include /usr/* if it runs after the mountnfs.sh script
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
-DESC="jfauthd"
-NAME=jfauthd
-DAEMON=/usr/sbin/$NAME
+DESC="jfauth daemon"
+NAME=jfauth
+DAEMON=/usr/sbin/jfauthd
 DAEMON_ARGS="-s -u -d --smbpasswd"   # you can override these in /etc/default
 PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
@@ -73,7 +73,7 @@ do_reload() {
 
 case "$1" in
   start)
-	log_daemon_msg "Starting $DESC" "$NAME"
+	log_daemon_msg "Starting $DESC" "jfauthd"
 	do_start
 	case "$?" in
 		0|1) log_end_msg 0 ;;
@@ -81,7 +81,7 @@ case "$1" in
 	esac
 	;;
   stop)
-	log_daemon_msg "Stopping $DESC" "$NAME"
+	log_daemon_msg "Stopping $DESC" "jfauthd"
 	do_stop
 	case "$?" in
 		0|1) log_end_msg 0 ;;
@@ -102,7 +102,7 @@ case "$1" in
 	# If the "reload" option is implemented then remove the
 	# 'force-reload' alias
 	#
-	log_daemon_msg "Restarting $DESC" "$NAME"
+	log_daemon_msg "Restarting $DESC" "jfauthd"
 	do_stop
 	case "$?" in
 	  0|1)
