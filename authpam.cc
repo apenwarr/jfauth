@@ -92,7 +92,9 @@ WvError jfauth_pam(WvStringParm appname, WvStringParm rhost,
     pamcheck(pamh, "pam_set(FAIL_DELAY)", status, err);
 
     status = pam_authenticate(pamh, PAM_DISALLOW_NULL_AUTHTOK | PAM_SILENT);
-    pamcheck(pamh, "pam_authenticate", status, err);
+    // we deliberately want to obfuscate pam_authenticate messages
+    //pamcheck(pamh, "pam_authenticate", status, err);
+    if (status != PAM_SUCCESS) err.set("Access denied");
     
     // supposedly needed to prevent caching between different user sessions
     pam_set_item(pamh, PAM_AUTHTOK, NULL);
