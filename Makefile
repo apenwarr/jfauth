@@ -2,6 +2,8 @@ CC=gcc
 CXX=g++
 CPPFLAGS=-g -I/usr/include/xplc-0.3.13 -I/usr/include/wvstreams -Wall \
 	-DJF_UNIX_SOCKFILE=\"/var/run/jfauthd/sock\"
+CFLAGS=-fPIC
+CXXFLAGS=-fPIC
 
 _JFRELEASE:=$(shell git describe --always)
 _JFDIRTY:=$(shell git diff-index --quiet --name-only HEAD || echo "-m")
