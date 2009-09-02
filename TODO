@@ -38,10 +38,9 @@ sysadmin
 		-fno-rtti
 		nonexistent wvx509mgr.h
 		
-.command line checker
-.	first line: username
-.	second line: password
-.	auth via unix socket
+command line checker
+.	add a pwauth-compatible tool
+	add a checkpassword-compatible tool
 
 pam_jfauthd:
 	connect to unix socket
