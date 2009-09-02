@@ -1,9 +1,12 @@
 #include "jfauthd.h"
-#include <wvstreams/wvstreamsdaemon.h>
-#include <wvstreams/wvtcp.h>
-#include <wvstreams/wvunixsocket.h>
-#include <wvstreams/wvstreamclone.h>
-#include <wvstreams/wvfileutils.h>
+#include "wvstreamsdaemon.h"
+#include "wvtcp.h"
+#include "wvunixsocket.h"
+#include "wvstreamclone.h"
+#include "wvfileutils.h"
+#include "wvsslstream.h"
+#include "wvx509mgr.h"
+#include "wvstrutils.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -14,11 +17,16 @@ class AuthStream : public WvStreamClone
 {
     WvDynBuf buf;
     WvLog log;
+    bool multiple_requests;
 public:
-    AuthStream(IWvStream *s) 
+    AuthStream(IWvStream *s, bool _multiple_requests)
 	: WvStreamClone(s), log(*src(), WvLog::Info)
     { 
-	alarm(10000);
+	multiple_requests = _multiple_requests;
+	if (!multiple_requests)
+	    alarm(10000);
+	else
+	    alarm(60000);
     }
     
     virtual void execute()
@@ -33,7 +41,10 @@ public:
 	    if (ofs)
 	    {
 		WvStringList l;
-		l.split(buf.getstr(ofs), "\r\n");
+		WvString instr = trim_string(buf.getstr(ofs).edit());
+		if (!instr)
+		    return;
+		l.split(instr, "\r\n");
 		int ver = l.popstr().num();
 		if (ver != 1)
 		{
@@ -58,7 +69,10 @@ public:
 		    log(WvLog::Notice,
 			"FAIL: auth user '%s': '%s'\n", user, e.str());
 		print("%s\r\n%s\r\n", e.get(), e.str());
-		close();
+		if (!multiple_requests)
+		    close();
+		else
+		    alarm(60000);
 	    }
 	    else if (buf.used() > 1024)
 	    {
@@ -74,8 +88,19 @@ static void tcp_incoming(WvStream &, void *userdata)
 {
     printf("tcp incoming\n");
     WvTCPListener *l = (WvTCPListener *)userdata;
-    WvIStreamList::globallist.append(new AuthStream(l->accept()),
+    WvIStreamList::globallist.append(new AuthStream(l->accept(), true),
 				     true, (char *)"tcp_incoming");
+}
+
+
+static void ssl_incoming(WvStream &, void *userdata)
+{
+    printf("ssl incoming\n");
+    WvTCPListener *l = (WvTCPListener *)userdata;
+    WvX509Mgr *x509 = new WvX509Mgr("jfauthd", 2048);
+    WvSSLStream *ssl = new WvSSLStream(l->accept(), x509, 0, true);
+    WvIStreamList::globallist.append(new AuthStream(ssl, true),
+				     true, (char *)"ssl_incoming");
 }
 
 
@@ -83,22 +108,26 @@ static void unix_incoming(WvStream &, void *userdata)
 {
     printf("unix incoming\n");
     WvUnixListener *l = (WvUnixListener *)userdata;
-    WvIStreamList::globallist.append(new AuthStream(l->accept()),
+    WvIStreamList::globallist.append(new AuthStream(l->accept(), false),
 				     true, (char *)"unix_incoming");
 }
 
 
 static void startup(WvStreamsDaemon &daemon, void *)
 {
-    WvTCPListener *l = new WvTCPListener(5478);
-    l->setcallback(tcp_incoming, l);
-    daemon.add_die_stream(l, true, (char *)"tcplistener");
+    WvTCPListener *tcp = new WvTCPListener(5478);
+    tcp->setcallback(tcp_incoming, tcp);
+    daemon.add_die_stream(tcp, true, (char *)"tcplistener");
+    
+    WvTCPListener *ssl = new WvTCPListener(5479);
+    ssl->setcallback(ssl_incoming, ssl);
+    daemon.add_die_stream(ssl, true, (char *)"ssllistener");
     
     mkdirp("/var/run/jfauthd", 0755);
-    WvUnixListener *l2 = new WvUnixListener(JF_UNIX_SOCKFILE, 0666);
+    WvUnixListener *unixl = new WvUnixListener(JF_UNIX_SOCKFILE, 0666);
     chmod(JF_UNIX_SOCKFILE, 0666);
-    l2->setcallback(unix_incoming, l2);
-    daemon.add_die_stream(l2, true, (char *)"unixlistener");
+    unixl->setcallback(unix_incoming, unixl);
+    daemon.add_die_stream(unixl, true, (char *)"unixlistener");
 }
 
 
