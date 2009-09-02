@@ -3,14 +3,20 @@
 #include <wvstreams/wvtcp.h>
 #include <wvstreams/wvunixsocket.h>
 #include <wvstreams/wvstreamclone.h>
+#include <wvstreams/wvfileutils.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
-
+#define JF_UNIX_SOCKFILE "/var/run/jfauthd/sock"
+    
 class AuthStream : public WvStreamClone
 {
     WvDynBuf buf;
+    WvLog log;
 public:
-    AuthStream(IWvStream *s) : WvStreamClone(s)
+    AuthStream(IWvStream *s) 
+	: WvStreamClone(s), log(*src(), WvLog::Info)
     { 
 	alarm(10000);
     }
@@ -40,10 +46,17 @@ public:
 		
 		WvString user = l.popstr();
 		WvString pass = l.popstr();
+		log(WvLog::Debug1, "auth request for user '%s'\n", user);
 		printf("ver:%d user:'%s' pass:'%s' (src='%s')\n",
 		       ver, user.cstr(), pass.cstr(),
 		       WvString(*src()).cstr());
 		WvError e = jfauth_pam("jfauthd", *src(), user, pass);
+		if (e.isok())
+		    log(WvLog::Info,
+			"PASS: auth succeeded for user '%s'\n", user);
+		else
+		    log(WvLog::Notice,
+			"FAIL: auth user '%s': '%s'\n", user, e.str());
 		print("%s\r\n%s\r\n", e.get(), e.str());
 		close();
 	    }
@@ -81,7 +94,9 @@ static void startup(WvStreamsDaemon &daemon, void *)
     l->setcallback(tcp_incoming, l);
     daemon.add_die_stream(l, true, (char *)"tcplistener");
     
-    WvUnixListener *l2 = new WvUnixListener("/tmp/socky", 0666);
+    mkdirp("/var/run/jfauthd", 0755);
+    WvUnixListener *l2 = new WvUnixListener(JF_UNIX_SOCKFILE, 0666);
+    chmod(JF_UNIX_SOCKFILE, 0666);
     l2->setcallback(unix_incoming, l2);
     daemon.add_die_stream(l2, true, (char *)"unixlistener");
 }
