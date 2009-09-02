@@ -137,7 +137,6 @@ public:
     
     virtual void execute()
     {
-	printf("execute\n");
 	if (alarm_was_ticking)
 	    close();
 	else
@@ -164,9 +163,6 @@ public:
 		WvString user = l.popstr();
 		WvString pass = l.popstr();
 		log(WvLog::Debug1, "auth request for user '%s'\n", user);
-		printf("ver:%d user:'%s' pass:'%s' (src='%s')\n",
-		       ver, user.cstr(), pass.cstr(),
-		       WvString(*src()).cstr());
 		
 		assert(globalauth);
 		WvError e = globalauth->check(*src(), user, pass);
@@ -188,7 +184,7 @@ public:
 	    }
 	    else if (buf.used() > 1024)
 	    {
-		printf("too much data\n");
+		log(WvLog::Warning, "too much data received: attacker?\n");
 		close();
 	    }
 	}
@@ -198,7 +194,6 @@ public:
 
 static void tcp_incoming(WvStream &, void *userdata)
 {
-    printf("tcp incoming\n");
     WvTCPListener *l = (WvTCPListener *)userdata;
     WvIStreamList::globallist.append(new AuthStream(l->accept(), true),
 				     true, (char *)"tcp_incoming");
@@ -207,7 +202,6 @@ static void tcp_incoming(WvStream &, void *userdata)
 
 static void ssl_incoming(WvStream &, void *userdata)
 {
-    printf("ssl incoming\n");
     WvTCPListener *l = (WvTCPListener *)userdata;
     WvX509Mgr *x509 = new WvX509Mgr("jfauthd", 2048);
     WvSSLStream *ssl = new WvSSLStream(l->accept(), x509, 0, true);
@@ -218,7 +212,6 @@ static void ssl_incoming(WvStream &, void *userdata)
 
 static void unix_incoming(WvStream &, void *userdata)
 {
-    printf("unix incoming\n");
     WvUnixListener *l = (WvUnixListener *)userdata;
     WvIStreamList::globallist.append(new AuthStream(l->accept(), false),
 				     true, (char *)"unix_incoming");
