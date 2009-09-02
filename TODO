@@ -1,0 +1,38 @@
+nss replication:
+	libnss-files-augment.so
+	script to actually replicate files
+	filter by group membership and minuid
+	replicate smbpasswd too?
+	filter by group membership
+	
+pam auth server:
+.	unix socket
+.	tcp socket
+.	ssl socket
+.	command line options to enable/disable each type of socket
+	proxy to remote auth server over ssl
+	persistent key on server side
+	client should check that server key matches previous
+	local caching
+		non-persistent, non-expiring
+		non-persistent, expiring
+		persistent, expiring
+		persistent, expiring with fallback
+	do something sensible if people make too many incoming connections
+
+sysadmin
+	sample init.d script
+	debian package scripts
+
+pam_jfauthd:
+	connect to unix socket
+	auto-create homedir on first login
+	auto-create homedir and download .ssh/authorized_keys
+	
+apache integration:
+	libapache2-mod-authnz-external
+
+alternatives:
+	saslauthd
+	pwauth - possibly-setuid binary
+	courierauthd
