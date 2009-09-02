@@ -15,6 +15,10 @@
 class AuthBase;
 AuthBase *globalauth;
 
+static WvString forwardhost, appname = "jfauthd";
+static bool enable_tcp = false, enable_ssl = false, enable_unix = false,
+    do_smbpasswd = false;
+
 
 class AuthBase
 {
@@ -32,7 +36,7 @@ public:
     virtual WvError check(WvStringParm rhost,
 			  WvStringParm user, WvStringParm pass) 
     {
-	return jfauth_pam("jfauthd", rhost, user, pass);
+	return jfauth_pam(appname, rhost, user, pass);
     }
 };
 
@@ -108,13 +112,19 @@ public:
 
 static void auth_succeeded(WvStringParm user, WvStringParm pass)
 {
-    if (!!user && !!pass)
+    if (do_smbpasswd && !!user && !!pass)
     {
 	const char *argv[] = { "smbpasswd", "-a", "-s", user, NULL };
 	WvPipe p("smbpasswd", argv, true, false, false);
 	p.print("%s\n%s\n", pass, pass);
 	p.nowrite();
 	p.finish(false);
+	int ret = p.exit_status();
+	if (ret)
+	{
+	    WvLog("smbpasswd", WvLog::Warning)
+		.print("smbpasswd returned error code %s\n", ret);
+	}
     }
 }
 
@@ -218,10 +228,18 @@ static void unix_incoming(WvStream &, void *userdata)
 }
 
 
-WvString forwardhost;
-
 static void startup(WvStreamsDaemon &daemon, void *)
 {
+    if (!enable_tcp && !enable_ssl && !enable_unix)
+    {
+	daemon.log(WvLog::Critical, "Must specify one of -u, -t, -s\n");
+	return;
+    }
+    
+    if (do_smbpasswd && getuid() != 0)
+	daemon.log(WvLog::Warning, 
+	   "smbpasswd updates enabled, but jfauthd not running as root\n");
+    
     if (globalauth)
 	delete globalauth;
     if (forwardhost)
@@ -229,19 +247,28 @@ static void startup(WvStreamsDaemon &daemon, void *)
     else
 	globalauth = new PamAuth();
     
-    WvTCPListener *tcp = new WvTCPListener(5478);
-    tcp->setcallback(tcp_incoming, tcp);
-    daemon.add_die_stream(tcp, true, (char *)"tcplistener");
+    if (enable_tcp)
+    {
+	WvTCPListener *tcp = new WvTCPListener(5478);
+	tcp->setcallback(tcp_incoming, tcp);
+	daemon.add_die_stream(tcp, true, (char *)"tcplistener");
+    }
     
-    WvTCPListener *ssl = new WvTCPListener(5479);
-    ssl->setcallback(ssl_incoming, ssl);
-    daemon.add_die_stream(ssl, true, (char *)"ssllistener");
+    if (enable_ssl)
+    {
+	WvTCPListener *ssl = new WvTCPListener(5479);
+	ssl->setcallback(ssl_incoming, ssl);
+	daemon.add_die_stream(ssl, true, (char *)"ssllistener");
+    }
     
-    mkdirp("/var/run/jfauthd", 0755);
-    WvUnixListener *unixl = new WvUnixListener(JF_UNIX_SOCKFILE, 0666);
-    chmod(JF_UNIX_SOCKFILE, 0666);
-    unixl->setcallback(unix_incoming, unixl);
-    daemon.add_die_stream(unixl, true, (char *)"unixlistener");
+    if (enable_unix)
+    {
+	mkdirp("/var/run/jfauthd", 0755);
+	WvUnixListener *unixl = new WvUnixListener(JF_UNIX_SOCKFILE, 0666);
+	chmod(JF_UNIX_SOCKFILE, 0666);
+	unixl->setcallback(unix_incoming, unixl);
+	daemon.add_die_stream(unixl, true, (char *)"unixlistener");
+    }
 }
 
 
@@ -252,6 +279,21 @@ int main(int argc, char **argv)
     daemon.args.add_option
 	('f', "forward", "Forward all requests to a remote jfauthd",
 	 "HOST:PORT", forwardhost);
+    daemon.args.add_option
+	('n', "name", "Change the PAM appname (default is 'jfauthd')",
+	 "APPNAME", appname);
+    
+    daemon.args.add_set_bool_option
+	(0, "smbpasswd", "Auto-update smbpasswd on successful auth",
+	 do_smbpasswd);
+    
+    daemon.args.add_set_bool_option
+	('u', "unix", WvString("Listen on unix socket %s",
+			       JF_UNIX_SOCKFILE), enable_unix);
+    daemon.args.add_set_bool_option
+	('t', "tcp", "[DANGER INSECURE] Listen on tcp port 5478", enable_tcp);
+    daemon.args.add_set_bool_option
+	('s', "ssl", "Listen on tcp-ssl port 5479 (encrypted)", enable_ssl);
     
     return daemon.run(argc, argv);
 }
