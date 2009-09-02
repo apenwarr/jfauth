@@ -7,12 +7,25 @@
 #include "wvsslstream.h"
 #include "wvx509mgr.h"
 #include "wvstrutils.h"
+#include "wvpipe.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#define JF_UNIX_SOCKFILE "/var/run/jfauthd/sock"
-    
+
+static void auth_succeeded(WvStringParm user, WvStringParm pass)
+{
+    if (!!user && !!pass)
+    {
+	const char *argv[] = { "smbpasswd", "-s", user, NULL };
+	WvPipe p("smbpasswd", argv, true, false, false);
+	p.print("%s\n%s\n", pass, pass);
+	p.nowrite();
+	p.finish(false);
+    }
+}
+
+
 class AuthStream : public WvStreamClone
 {
     WvDynBuf buf;
@@ -63,8 +76,11 @@ public:
 		       WvString(*src()).cstr());
 		WvError e = jfauth_pam("jfauthd", *src(), user, pass);
 		if (e.isok())
+		{
 		    log(WvLog::Info,
 			"PASS: auth succeeded for user '%s'\n", user);
+		    auth_succeeded(user, pass);
+		}
 		else
 		    log(WvLog::Notice,
 			"FAIL: auth user '%s': '%s'\n", user, e.str());

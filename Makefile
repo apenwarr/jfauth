@@ -1,6 +1,7 @@
 CC=gcc
 CXX=g++
-CPPFLAGS=-g -I/usr/include/xplc-0.3.13 -I/usr/include/wvstreams -Wall
+CPPFLAGS=-g -I/usr/include/xplc-0.3.13 -I/usr/include/wvstreams -Wall \
+	-DJF_UNIX_SOCKFILE=\"/var/run/jfauthd/sock\"
 
 default: all
 
