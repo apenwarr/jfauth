@@ -28,6 +28,9 @@ install: all
 	install -m 0644 -t ${DESTDIR}/usr/share/doc/jfauth COPYING README
 	install -m 0644 -T example.common-auth \
 		${DESTDIR}/usr/share/doc/jfauth/examples/common-auth
+		
+deb:
+	dpkg-buildpackage -rfakeroot -I'\.git'
 
 jfauthd: LIBS+=-lwvstreams -lpam
 jfauthd: jfauthd.o authpam.o jfversion.o
