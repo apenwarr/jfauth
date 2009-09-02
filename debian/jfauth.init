@@ -14,13 +14,14 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="jfauth daemon"
 NAME=jfauth
-DAEMON=/usr/sbin/jfauthd
+DAEMON=jfauthd
+DAEMONPATH=/usr/sbin/jfauthd
 DAEMON_ARGS="-s -u -d --smbpasswd"   # you can override these in /etc/default
-PIDFILE=/var/run/$NAME.pid
+PIDFILE=/var/run/${DAEMON}.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Exit if the package is not installed
-[ -x "$DAEMON" ] || exit 0
+[ -x "$DAEMONPATH" ] || exit 0
 
 # Read configuration variable file if it is present
 [ -r /etc/default/$NAME ] && . /etc/default/$NAME
@@ -41,9 +42,9 @@ do_start()
 	#   0 if daemon has been started
 	#   1 if daemon was already running
 	#   2 if daemon could not be started
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMONPATH --test > /dev/null \
 		|| return 1
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMONPATH -- \
 		$DAEMON_ARGS \
 		|| return 2
 }
@@ -73,7 +74,7 @@ do_reload() {
 
 case "$1" in
   start)
-	log_daemon_msg "Starting $DESC" "jfauthd"
+	log_daemon_msg "Starting $DESC" "${DAEMON}"
 	do_start
 	case "$?" in
 		0|1) log_end_msg 0 ;;
@@ -81,7 +82,7 @@ case "$1" in
 	esac
 	;;
   stop)
-	log_daemon_msg "Stopping $DESC" "jfauthd"
+	log_daemon_msg "Stopping $DESC" "${DAEMON}"
 	do_stop
 	case "$?" in
 		0|1) log_end_msg 0 ;;
@@ -102,7 +103,7 @@ case "$1" in
 	# If the "reload" option is implemented then remove the
 	# 'force-reload' alias
 	#
-	log_daemon_msg "Restarting $DESC" "jfauthd"
+	log_daemon_msg "Restarting $DESC" "${DAEMON}"
 	do_stop
 	case "$?" in
 	  0|1)
