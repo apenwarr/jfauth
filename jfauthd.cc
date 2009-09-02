@@ -1,4 +1,5 @@
 #include "jfauthd.h"
+#include "jfauth.h"
 #include "wvstreamsdaemon.h"
 #include "wvtcp.h"
 #include "wvunixsocket.h"
@@ -274,7 +275,7 @@ static void startup(WvStreamsDaemon &daemon, void *)
 
 int main(int argc, char **argv)
 {
-    WvStreamsDaemon daemon("jfauthd", "0.1", startup);
+    WvStreamsDaemon daemon("jfauthd", jfversion, startup);
     
     daemon.args.add_option
 	('f', "forward", "Forward all requests to a remote jfauthd",
