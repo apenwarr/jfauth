@@ -7,6 +7,9 @@
 
 int jfauth_authenticate(const char *user, const char *pass)
 {
+    if (!user || !pass)
+	return -1;
+    
     int sock = socket(PF_UNIX, SOCK_STREAM, 0);
     if (sock < 0)
     {

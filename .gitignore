@@ -1,4 +1,6 @@
 *.o
+*.so
 *~
 jfauth
 jfauthd
+pamtest

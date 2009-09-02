@@ -43,12 +43,14 @@ command line checker
 	add a checkpassword-compatible tool
 
 pam_jfauthd:
-	connect to unix socket
-	auto-create homedir on first login
+.	connect to unix socket
+	auto-create homedir on first login (permissions?)
 	auto-create homedir and download .ssh/authorized_keys
 	
 apache integration:
 	libapache2-mod-authnz-external
+	
+lighttpd integration?  how?
 
 alternatives:
 	saslauthd

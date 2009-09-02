@@ -17,6 +17,7 @@ static int noconv(int num_msg, const struct pam_message **msgm,
 static int passconv(int num_msg, const struct pam_message **msgm,
 		    struct pam_response **response, void *userdata)
 {
+    printf("passconv! (%s)\n", (char *)userdata);
     struct pam_response *password_echo;
     password_echo 
 	= (struct pam_response *)calloc(num_msg, sizeof(pam_response));
@@ -51,6 +52,8 @@ static void do_delay(int retval, unsigned usec_delay, void *appdata_ptr)
 WvError jfauth_pam(WvStringParm appname, WvStringParm rhost,
 		   WvStringParm user, WvStringParm pass)
 {
+    printf("authpam: (%s) (%s)\n", user.cstr(), pass.cstr());
+    
     WvError err;
     pam_handle_t *pamh = NULL;
     int status;
@@ -78,7 +81,7 @@ WvError jfauth_pam(WvStringParm appname, WvStringParm rhost,
         status = pam_set_item(pamh, PAM_USER, user);
 	pamcheck(pamh, "pam_set(USER)", status, err);
     }
-
+    
     if (!!pass)
     {
         struct pam_conv c;
