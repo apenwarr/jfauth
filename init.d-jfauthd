@@ -15,7 +15,7 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="jfauthd"
 NAME=jfauthd
 DAEMON=/usr/sbin/$NAME
-DAEMON_ARGS="-s -u -d --smbpasswd"
+DAEMON_ARGS="-s -u -d --smbpasswd"   # you can override these in /etc/default
 PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 

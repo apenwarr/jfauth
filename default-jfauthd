@@ -1,0 +1,1 @@
+DAEMON_ARGS="-s -u -d --smbpasswd"

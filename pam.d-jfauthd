@@ -1,0 +1,21 @@
+#
+# /etc/pam.d/jfauthd - specify the PAM behaviour for jfauthd
+#
+# It's unsafe to just use the default behaviour here, because the default
+# behaviour might be to forward to jfauthd, and that would cause an infinite
+# loop!
+#
+# Instead, keep the default account, password, and session behaviour (since
+# jfauthd won't be used for those) and just use a simple default for auth.
+#
+@include common-account
+@include common-password
+@include common-session
+
+# Example of how to just use pam_unix
+auth	required	pam_unix.so nullok_secure
+
+# Example of how to relay to pam_ldap instead
+# (comment out the above version if you uncomment this one)
+#auth required pam_ldap.so debug
+#auth required pam_unix.so use_first_pass
