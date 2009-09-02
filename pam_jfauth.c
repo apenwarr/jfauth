@@ -36,6 +36,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags,
 	return ret;
     pass = resp[0].resp;
     
+    if (pass)
+	pam_set_item(pamh, PAM_AUTHTOK, pass);
+    
     int result = jfauth_authenticate(name, pass) == 0;
     
     free(resp[0].resp);
