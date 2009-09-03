@@ -35,9 +35,9 @@ static bool
     enable_unix = false,
     do_smbpasswd = false;
 static int 
-    cache_expire_secs = 1000,
-    cache_accel_secs = 500,
-    cache_max_size = 1;
+    cache_expire_secs = -1,
+    cache_accel_secs = 60,
+    cache_max_size = 100;
 
 
 static int lru_cmp(const UserPass *a, const UserPass *b)
@@ -101,7 +101,8 @@ static bool authcache_check(WvStringParm user, WvStringParm pass,
 {
     UserPass *up = authcache[user];
     time_t now = time(NULL);
-    if (up && up->pass == pass && now - up->when <= expire_secs)
+    if (up && up->pass == pass
+	&& (expire_secs < 0 || now - up->when < expire_secs))
     {
 	up->lastused = now;
 	return true;
@@ -475,6 +476,23 @@ int main(int argc, char **argv)
     daemon.args.add_set_bool_option
 	(0, "smbpasswd", "Auto-update smbpasswd on successful auth",
 	 do_smbpasswd);
+    
+    daemon.args.add_option
+	(0, "cache-time",
+	 "Time to cache successful authentications for use when "
+	 "forwarding server is broken (0=disable, -1=forever), "
+	 "default is -1",
+	 "SECONDS", cache_expire_secs);
+    daemon.args.add_option
+	(0, "accel-time",
+	 "Time to cache successful authentications just to speed things up "
+	 "(0=disable, -1=forever), default is 60",
+	 "SECONDS", cache_accel_secs);
+    daemon.args.add_option
+	(0, "cache-size",
+	 "Max number of users in the auth cache (default=100)",
+	 "NUMUSERS", cache_max_size);
+    
     
     daemon.args.add_set_bool_option
 	('u', "unix", WvString("Listen on unix socket %s",
