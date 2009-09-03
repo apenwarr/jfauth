@@ -1,5 +1,13 @@
+jfauth (0.2) unstable; urgency=low
+
+  * Fixed problem where -f option could cause 100% CPU usage sometimes.
+  * Added authcache.
+
+ -- Avery Pennarun <apenwarr@gmail.com>  Thu, 03 Sep 2009 15:04:32 -0400
+
 jfauth (0.1) unstable; urgency=low
 
   * First version.
 
  -- Avery Pennarun <apenwarr@gmail.com>  Wed, 02 Sep 2009 17:40:42 -0400
+
