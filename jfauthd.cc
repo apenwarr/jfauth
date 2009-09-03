@@ -287,9 +287,10 @@ public:
 };
 
 
-static void auth_succeeded(WvStringParm user, WvStringParm pass)
+static void auth_succeeded(WvStringParm user, WvStringParm pass,
+                           bool was_cached)
 {
-    if (do_smbpasswd && !!user && !!pass)
+    if (!was_cached && do_smbpasswd && !!user && !!pass)
     {
 	const char *argv[] = { "smbpasswd", "-a", "-s", user, NULL };
 	WvPipe p("smbpasswd", argv, true, false, false);
@@ -359,14 +360,16 @@ public:
 		assert(globalauth);
 		WvError e;
 		
-		if (!authcache_check(user, pass, cache_accel_secs))
+		bool cache_result 
+		    = authcache_check(user, pass, cache_accel_secs);
+		if (!cache_result)
 		    e = globalauth->check(*src(), user, pass);
 		
 		if (e.isok())
 		{
 		    log(WvLog::Info,
 			"PASS: auth succeeded for user '%s'\n", user);
-		    auth_succeeded(user, pass);
+		    auth_succeeded(user, pass, cache_result);
 		}
 		else
 		    log(WvLog::Notice,
