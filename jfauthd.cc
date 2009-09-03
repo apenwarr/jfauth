@@ -14,10 +14,11 @@
 #include <sys/stat.h>
 
 #define UNIX_TIMEOUT_MS 10000
-#define TCP_TIMEOUT_MS  60000
+#define TCP_TIMEOUT_MS  120000
 
 class AuthBase;
 AuthBase *globalauth;
+WvX509Mgr *x509;
 
 static WvString forwardhost, appname = "jfauthd";
 static bool enable_tcp = false, enable_ssl = false, enable_unix = false,
@@ -262,7 +263,6 @@ static void tcp_incoming(WvStream &, void *userdata)
 static void ssl_incoming(WvStream &, void *userdata)
 {
     WvTCPListener *l = (WvTCPListener *)userdata;
-    WvX509Mgr *x509 = new WvX509Mgr("jfauthd", 2048);
     WvSSLStream *ssl = new WvSSLStream(l->accept(), x509, 0, true);
     WvIStreamList::globallist.append(new AuthStream(ssl, true),
 				     true, (char *)"ssl_incoming");
@@ -305,6 +305,11 @@ static void startup(WvStreamsDaemon &daemon, void *)
     
     if (enable_ssl)
     {
+	daemon.log(WvLog::Debug, "Generating SSL certificate.\n");
+	if (x509)
+	    WVRELEASE(x509);
+	x509 = new WvX509Mgr("jfauthd", 2048);
+	
 	WvTCPListener *ssl = new WvTCPListener(5479);
 	ssl->setcallback(ssl_incoming, ssl);
 	daemon.add_die_stream(ssl, true, (char *)"ssllistener");
