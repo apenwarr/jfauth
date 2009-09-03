@@ -13,6 +13,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#define UNIX_TIMEOUT_MS 10000
+#define TCP_TIMEOUT_MS  60000
+
 class AuthBase;
 AuthBase *globalauth;
 
@@ -46,6 +49,7 @@ class ForwardAuth : public AuthBase
 {
     WvString hostport;
     WvStream *s;
+    WvLog log;
     
     void unconnect()
     {
@@ -59,20 +63,60 @@ class ForwardAuth : public AuthBase
     
     void reconnect()
     {
+	log(WvLog::Info, "Connecting.\n");
 	unconnect();
 	
-	WvStream *_s;
+	WvTCPConn *_s;
 	if (!!hostport && strchr(hostport, ':'))
 	    _s = new WvTCPConn(hostport);
 	else
 	    _s = new WvTCPConn(hostport, 5479);
+	_s->low_delay();
 	s = new WvSSLStream(_s);
+	s->runonce(0);
+	s->runonce(0);
+	s->alarm(TCP_TIMEOUT_MS/2);
+	s->setcallback(_callback, this);
 	WvIStreamList::globallist.append(s, false, (char *)"forwardauth");
+    }
+    
+    void callback()
+    {
+	if (s->alarm_was_ticking)
+	{
+	    log(WvLog::Debug, "Sending keepalive.\n");
+	    s->write("\0", 1); // empty keepalive message; no response expected
+	    s->alarm(TCP_TIMEOUT_MS/2);
+	}
+	
+	char buf[1024];
+	size_t len = s->read(buf, sizeof(buf));
+	if (len)
+	{
+	    log(WvLog::Warning, "Received unexpected %s bytes\n", len);
+	    unconnect(); // for safety
+	}
+	
+#if 0 
+	// this isn't such a good idea; it'll cause a flood of reconnects
+	// if the server ever has trouble reconnecting.  Instead, if we get
+	// disconnected, *stay* disconnected until the next time someone
+	// *really* needs an auth request to go through.
+	if (!s->isok())
+	   reconnect();
+#endif 
+    }
+    
+    static void _callback(WvStream &, void *userdata)
+    {
+	ForwardAuth *auth = (ForwardAuth *)userdata;
+	assert(auth->s); // it should be auth->s *calling* us, so I hope so!
+	auth->callback();
     }
     
 public:
     ForwardAuth(WvStringParm _hostport) 
-	: hostport(_hostport)
+	: hostport(_hostport), log("AuthForward", WvLog::Debug1)
     {
 	s = NULL;
 	reconnect();
@@ -91,7 +135,6 @@ public:
 	
 	s->print("1\r\n%s\r\n%s\r\n", user, pass);
 	s->write("\0", 1);
-	s->runonce(0);
 	WvString r1 = trim_string(s->getline(5000));
 	WvString r2 = trim_string(s->getline(500));
 	
@@ -141,18 +184,23 @@ public:
     { 
 	multiple_requests = _multiple_requests;
 	if (!multiple_requests)
-	    alarm(10000);
+	    alarm(UNIX_TIMEOUT_MS);
 	else
-	    alarm(60000);
+	    alarm(TCP_TIMEOUT_MS);
     }
     
     virtual void execute()
     {
 	if (alarm_was_ticking)
+	{
+	    log("No recent requests: disconnecting.\n");
 	    close();
+	}
 	else
 	{
-	    read(buf, 1024);
+	    size_t len = read(buf, 1024);
+	    if (len && multiple_requests)
+		alarm(TCP_TIMEOUT_MS); // not idle, anyway
 	    int ofs = buf.strchr(0);
 	    if (ofs)
 	    {
@@ -190,8 +238,6 @@ public:
 		print("%s\r\n%s\r\n", e.get(), e.str());
 		if (!multiple_requests)
 		    close();
-		else
-		    alarm(60000);
 	    }
 	    else if (buf.used() > 1024)
 	    {
@@ -206,7 +252,9 @@ public:
 static void tcp_incoming(WvStream &, void *userdata)
 {
     WvTCPListener *l = (WvTCPListener *)userdata;
-    WvIStreamList::globallist.append(new AuthStream(l->accept(), true),
+    WvTCPConn *c = l->accept();
+    c->low_delay();
+    WvIStreamList::globallist.append(new AuthStream(c, true),
 				     true, (char *)"tcp_incoming");
 }
 
