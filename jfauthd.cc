@@ -172,12 +172,11 @@ class ForwardAuth : public AuthBase
 	log(WvLog::Info, "Connecting.\n");
 	unconnect();
 	
-	WvTCPConn *_s;
+	WvStream *_s;
 	if (!!hostport && strchr(hostport, ':'))
 	    _s = new WvTCPConn(hostport);
 	else
 	    _s = new WvTCPConn(hostport, 5479);
-	_s->low_delay();
 	s = new WvSSLStream(_s);
 	s->runonce(0);
 	s->runonce(0);
@@ -389,9 +388,7 @@ public:
 static void tcp_incoming(WvStream &, void *userdata)
 {
     WvTCPListener *l = (WvTCPListener *)userdata;
-    WvTCPConn *c = l->accept();
-    c->low_delay();
-    WvIStreamList::globallist.append(new AuthStream(c, true),
+    WvIStreamList::globallist.append(new AuthStream(l->accept(), true),
 				     true, (char *)"tcp_incoming");
 }
 
