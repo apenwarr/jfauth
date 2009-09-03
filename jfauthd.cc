@@ -9,6 +9,7 @@
 #include "wvx509mgr.h"
 #include "wvstrutils.h"
 #include "wvpipe.h"
+#include "wvscatterhash.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -17,12 +18,97 @@
 #define TCP_TIMEOUT_MS  120000
 
 class AuthBase;
-AuthBase *globalauth;
-WvX509Mgr *x509;
+static AuthBase *globalauth;
+static WvX509Mgr *x509;
 
-static WvString forwardhost, appname = "jfauthd";
-static bool enable_tcp = false, enable_ssl = false, enable_unix = false,
+struct UserPass { WvString user, pass; time_t when, lastused; };
+DeclareWvScatterDict(UserPass, WvString, user);
+static UserPassDict authcache;
+
+// config options
+static WvString
+    forwardhost,
+    appname = "jfauthd";
+static bool
+    enable_tcp = false,
+    enable_ssl = false,
+    enable_unix = false,
     do_smbpasswd = false;
+static int 
+    cache_expire_secs = 1000,
+    cache_accel_secs = 500,
+    cache_max_size = 1;
+
+
+static int lru_cmp(const UserPass *a, const UserPass *b)
+{
+    return a->lastused - b->lastused;
+}
+
+
+static void authcache_add(WvStringParm user, WvStringParm pass)
+{
+    // FIXME: cache the password's hash instead?  If so, use a specific
+    // hash designed for passwords, not just md5/sha1 (which are too fast).
+    // For more, see:
+    // http://www.usenix.org/events/usenix99/provos/provos_html/index.html
+    // 
+    // Hashing isn't so important if the cache is only in RAM, but it
+    // becomes critical if we'll be persisting to disk.
+    time_t now = time(NULL);
+    UserPass *up = authcache[user];
+    if (up && up->pass == pass)
+	up->when = up->lastused = now;
+    else
+    {
+	up = new UserPass;
+	up->user = user;
+	up->pass = pass;
+	up->when = up->lastused = now;
+	authcache.add(up, true);
+    }
+    
+    // If the cache is too full, expire entries until it isn't.
+    int cnt = authcache.count();
+    if (cnt > cache_max_size)
+    {
+	WvList<UserPass> deathq;
+	UserPassDict::Sorter i(authcache, lru_cmp);
+	for (i.rewind(); i.next() && cnt > cache_max_size; cnt--)
+	    deathq.append(i.ptr(), false);
+	
+	while (!deathq.isempty())
+	{
+	    authcache.remove(deathq.first());
+	    deathq.unlink_first();
+	}
+    }
+}
+
+
+// expire an entry if it has the given password, because we're now sure that
+// that password is wrong.  Perhaps the user has changed his password.
+static void authcache_del(WvStringParm user, WvStringParm pass)
+{
+    UserPass *oldup = authcache[user];
+    if (oldup && oldup->pass == pass)
+	authcache.remove(oldup);
+}
+
+
+static bool authcache_check(WvStringParm user, WvStringParm pass,
+			    int expire_secs)
+{
+    UserPass *up = authcache[user];
+    time_t now = time(NULL);
+    if (up && up->pass == pass && now - up->when <= expire_secs)
+    {
+	up->lastused = now;
+	return true;
+    }
+    else
+	return false;
+}
 
 
 class AuthBase
@@ -41,7 +127,20 @@ public:
     virtual WvError check(WvStringParm rhost,
 			  WvStringParm user, WvStringParm pass) 
     {
-	return jfauth_pam(appname, rhost, user, pass);
+	WvError e = jfauth_pam(appname, rhost, user, pass);
+	
+	// If PAM has rejected it, we assume the password is *definitely*
+	// wrong.  This is arguable; for example, if the LDAP server fails,
+	// PAM will reject it, but we might want to cache it anyway.  But I
+	// guess that should be PAM's job to consider, not ours.
+	// 
+	// Maybe we need to consider the PAM return code more carefully?
+	if (e.isok())
+	    authcache_add(user, pass);
+	else
+	    authcache_del(user, pass);
+	
+	return e;
     }
 };
 
@@ -51,6 +150,10 @@ class ForwardAuth : public AuthBase
     WvString hostport;
     WvStream *s;
     WvLog log;
+    bool _ok;
+    
+    bool connection_ok() const
+        { return _ok && s && s->isok(); }
     
     void unconnect()
     {
@@ -59,6 +162,7 @@ class ForwardAuth : public AuthBase
 	    WvIStreamList::globallist.unlink(s);
 	    WVRELEASE(s);
 	    s = NULL;
+	    _ok = false;
 	}
     }
     
@@ -76,7 +180,7 @@ class ForwardAuth : public AuthBase
 	s = new WvSSLStream(_s);
 	s->runonce(0);
 	s->runonce(0);
-	s->alarm(TCP_TIMEOUT_MS/2);
+	s->alarm(5000);
 	s->setcallback(_callback, this);
 	WvIStreamList::globallist.append(s, false, (char *)"forwardauth");
     }
@@ -105,7 +209,10 @@ class ForwardAuth : public AuthBase
 	// *really* needs an auth request to go through.
 	if (!s->isok())
 	   reconnect();
-#endif 
+#endif
+	
+	// if we lived through the above, the connection is valid
+	_ok = s->isok();
     }
     
     static void _callback(WvStream &, void *userdata)
@@ -120,6 +227,7 @@ public:
 	: hostport(_hostport), log("AuthForward", WvLog::Debug1)
     {
 	s = NULL;
+	_ok = false;
 	reconnect();
     }
     
@@ -128,28 +236,52 @@ public:
 	unconnect();
     }
     
+    // Okay, this gets a little complicated with caching.  Notes:
+    //  - our caller has already checked the cache for cache_accel_secs, so
+    //    that has nothing to do with this logic.
+    //  - if we're disconnected, use the cache up to cache_expire_secs.
+    //  - if we're *not* disconnected, never read the cache, just write to it.
     virtual WvError check(WvStringParm rhost,
 			  WvStringParm user, WvStringParm pass) 
     {
-	if (!s->isok())
-	    reconnect();
+	if (!connection_ok())
+	{
+	    if (!s->isok())
+		reconnect();
+	    if (authcache_check(user, pass, cache_expire_secs))
+		return WvError(); // pass
+	    // otherwise fall through and give them another chance
+	}
+
+	WvError e;
 	
 	s->print("1\r\n%s\r\n%s\r\n", user, pass);
 	s->write("\0", 1);
 	WvString r1 = trim_string(s->getline(5000));
 	WvString r2 = trim_string(s->getline(500));
 	
-	WvError e;
 	if (s->geterr())
 	    e.set_both(s->geterr(), s->errstr());
 	else if (!s->isok())
 	    e.set("Remote auth server disconnected");
+	else if (!r1 || !r2)
+	{
+	    e.set("Remote server failed to respond");
+	    s->seterr_both(e.get(), e.str());
+	}
 	else if (r1.num())
+	{
+	    // explicit rejection by server: make sure the cache doesn't think
+	    // this password is okay later.
+	    authcache_del(user, pass);
 	    e.set_both(r1.num(), r2);
+	}
 	else if (r1 != "0")
 	    e.set("Remote auth server: syntax error in response");
 	// otherwise: succeeded
-	 
+	
+	if (e.isok())
+	    authcache_add(user, pass);
 	return e;
     }
 };
@@ -225,7 +357,10 @@ public:
 		log(WvLog::Debug1, "auth request for user '%s'\n", user);
 		
 		assert(globalauth);
-		WvError e = globalauth->check(*src(), user, pass);
+		WvError e;
+		
+		if (!authcache_check(user, pass, cache_accel_secs))
+		    e = globalauth->check(*src(), user, pass);
 		
 		if (e.isok())
 		{
