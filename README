@@ -91,38 +91,55 @@ view, that's either better or worse.
 Caching
 -------
 
-jfauthd currently doesn't cache successful authentications.  The plan is to
-add that, so things like LDAP authentication (which can be sloooooooow,
-especially with SSL and over a VPN) can be vastly quicker.
+jfauthd caches successful authentications in two ways:
 
-The plan is to cache only successful authentications, and have two different
-timeouts:
+ 1. If the --accel-time option is nonzero (the default), the cache is used for pure
+    acceleration.  If a given username/password pair has authenticated
+    successfully up to accel-time seconds ago, the same username/password
+    pair will succeed again, without forwarding the request to the remote
+    jfauthd or PAM.
+    
+    This is especially useful if you use slow authentication methods (such
+    as LDAP over SSL) or if your remote jfauthd is connected over a slow
+    VPN, or if you do tons of repeated authentications (like apache_mod_pam
+    does: one per page).  If your auth method is really slow, you might want
+    to increase accel-time to something like a day or two.
+    
+    If the user provides a username/password that *isn't* in the cache -
+    even if there's a successful pair already cached - the request will
+    still be forwarded.  That means if you change your password on the
+    server, the new password will work right away, just like you'd expect.
+    
+    However, if you change your password on the server, the *old* password
+    will continue to work for up to accel-time seconds, or until you
+    authenticate using the new password (which replaces the old cached
+    entry).
+ 
+ 2. If the --cache-time option is nonzero (default is -1, which means it
+    never expires), then the cache is used when if the remote jfauthd is
+    down, can't be reached, or doesn't respond quickly enough.  (It has no
+    effect in PAM mode.)
+    
+    The --cache-time is used only as a fallback in case the server isn't
+    working; jfauthd always tries to ask the server, even if it already has
+    a successful entry in its cache, and only uses the cached entry if the
+    server doesn't answer.
+    
+    This kind of caching is a little safer than accel-time (since if you
+    change your password, the old password stops working right away), but
+    is handy if your main worry is that brief downtime in your master server
+    might cause your network to grind to a halt.  With a nonzero
+    --cache-time, at least users who have logged into a particular machine
+    in the past can still use that machine while the master server is down.
 
- - if we're still connected to the remote server, time out the cache after
-   short_timeout seconds.  Before that time, don't even bother re-requesting
-   authentication from the server, thus reducing its load and making things
-   go super fast.  short_timeout is probably about 5 to 30 seconds.
+You can use --accel-time and --expire-time together; in that case, the
+accelerator cache takes precedence, and --expire-time is only used if the
+accel time expires.
 
- - if we can't connect to the remote server, cache successful
-   authentications for up to long_timeout seconds.  I think this should
-   default to infinity; that's what Windows XP does when you can't connect
-   to a domain, and it's very convenient.  It means your computer won't
-   become unusable (at least for the people who have used it lately) just
-   because your auth server goes down for a while.
-
-Note that this caching doesn't get in the way of people who have changed
-their passwords: if you enter a password that *doesn't* match the on the in
-the cache, we'll forward the request on to the remote server where it can be
-checked.  We update the cache only if the remote server says authentication
-was successful.
-
-Also note that "remote server" in this case could equally well be PAM.  Some
-PAM modules are *really* slow, which is completely inappropriate in some
-sitautions, such as apache_mod_pam, which re-authenticates for *every single
-web page you request*.  If your PAM is set up to talk to LDAP, this puts a
-huge load on your LDAP server and makes your web server incredibly slow. 
-With jfauthd caching, apache_mod_pam can authenticate against whatever you
-want, and it'll still be fast.
+You might also want to tweak the --cache-size parameter, which controls the
+maximum number of users in the cache (and thus the amount of memory it
+uses).  The default is 100, which is very conservative, since each cache
+entry probably takes less than 100 bytes.
 
 
 Installation (master server)
